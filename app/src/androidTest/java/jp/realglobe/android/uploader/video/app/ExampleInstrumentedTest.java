@@ -1,4 +1,4 @@
-package jp.realglobe.android.uploader.video;
+package jp.realglobe.android.uploader.video.app;
 
 import android.content.Context;
 import android.support.test.InstrumentationRegistry;

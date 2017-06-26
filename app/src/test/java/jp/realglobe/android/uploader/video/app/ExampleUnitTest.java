@@ -1,4 +1,4 @@
-package jp.realglobe.android.uploader.video;
+package jp.realglobe.android.uploader.video.app;
 
 import org.junit.Test;
 

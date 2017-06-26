@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Video Uploader</string>
+    <string name="notification_permissions">権限が足りません。システム設定から許可してください</string>
+    <string name="label_video_path">H264ファイル</string>
+    <string name="label_upload_url">アップロードURL</string>
+    <string name="label_button_start">開始</string>
 </resources>
