@@ -16,10 +16,14 @@
 
 <resources>
     <string name="app_name">Video Uploader</string>
-    <string name="notification_permissions">権限が足りません。システム設定から許可してください</string>
-    <string name="label_video_path">H264ファイル</string>
-    <string name="label_upload_url">アップロードURL</string>
-    <string name="label_button_start">開始</string>
-    <string name="dummy_video_file">video.h264</string>
     <string name="dummy_upload_url">rtmp://example.org/live/0</string>
+    <string name="dummy_video_file">video.h264</string>
+    <string name="label_button_start">開始</string>
+    <string name="label_upload_url">アップロードURL</string>
+    <string name="label_video_path">H264ファイル</string>
+    <string name="notification_ffmpeg_download_error">FFmpegのダウンロードに失敗しました</string>
+    <string name="notification_no_ffmpeg">対応するFFmpegを用意できませんでした</string>
+    <string name="notification_permissions">権限が足りません。システム設定から許可してください</string>
+    <string name="notification_upload_error">アップロードに失敗しました</string>
+    <string name="notification_video_error">映像データの読み取りに失敗しました</string>
 </resources>

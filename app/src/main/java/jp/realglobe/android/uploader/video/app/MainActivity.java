@@ -109,7 +109,7 @@ public class MainActivity extends BaseActivity {
     private void start() {
         FFmpegHelper.asyncDownload(getString(R.string.ffmpeg_root_url), getDownloadDir(), false, 30_000, (File ffmpeg) -> runOnUiThread(() -> {
             if (ffmpeg == null) {
-                showToast("対応するFFmpegを用意できませんでした");
+                showToast(getString(R.string.notification_no_ffmpeg));
                 this.buttonStart.setEnabled(true);
                 return;
             }
@@ -117,12 +117,12 @@ public class MainActivity extends BaseActivity {
                 upload(ffmpeg);
             } catch (IOException e) {
                 Log.e(TAG, "Upload error", e);
-                showToast("アップロードに失敗しました");
+                showToast(getString(R.string.notification_upload_error));
                 this.buttonStart.setEnabled(true);
             }
         }), (Exception e) -> runOnUiThread(() -> {
             Log.e(TAG, "Downloading FFmpeg failed", e);
-            showToast("FFmpegのダウンロードに失敗しました");
+            showToast(getString(R.string.notification_ffmpeg_download_error));
             this.buttonStart.setEnabled(true);
         }));
     }
@@ -176,7 +176,7 @@ public class MainActivity extends BaseActivity {
                 } catch (IOException e) {
                     Log.e(TAG, "Reading " + setting.getVideoPath() + " failed", e);
                     runOnUiThread(() -> {
-                        showToast("映像データの読み取りに失敗しました");
+                        showToast(getString(R.string.notification_video_error));
                         MainActivity.this.buttonStart.setEnabled(true);
                     });
                     return;
