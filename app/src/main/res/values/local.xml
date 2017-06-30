@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ffmpeg_root_url">Your FFmpeg Server URL</string>
+</resources>

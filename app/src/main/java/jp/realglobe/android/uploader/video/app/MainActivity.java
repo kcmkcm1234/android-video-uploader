@@ -1,20 +1,13 @@
 package jp.realglobe.android.uploader.video.app;
 
 import android.Manifest;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
-import android.preference.PreferenceManager;
+import android.os.Handler;
+import android.os.HandlerThread;
 import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
-import android.support.v7.app.AppCompatActivity;
-import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.Toast;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -22,20 +15,17 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import jp.realglobe.android.uploader.video.RtmpUploader;
-import jp.realglobe.android.uploader.video.VideoQueue;
+import jp.realglobe.android.logger.simple.Log;
+import jp.realglobe.android.uploader.video.FFmpegHelper;
+import jp.realglobe.android.uploader.video.FFmpegRtmpUploader;
+import jp.realglobe.android.uploader.video.VideoUploader;
+import jp.realglobe.android.util.BaseActivity;
 
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends BaseActivity {
 
     private static final String TAG = MainActivity.class.getName();
-
-    private static final String KEY_PATH = "path";
-    private static final String KEY_URL = "url";
 
     private static final long QUEUE_CAPACITY = 1 << 23; // 8MB
     private static final long QUEUE_THRESHOLD = 1 << 20; // 1MB
@@ -47,90 +37,139 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.READ_EXTERNAL_STORAGE,
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
     };
-    private static final int PERMISSION_REQUEST_CODE = 30236;
+
+    private EditText editPath;
+    private EditText editUrl;
+    private Button buttonStart;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        checkPermission();
+        initUi();
+
+        checkPermission(PERMISSIONS, makePermissionRequestCallback(() -> {
+        }, (String[] denied) -> {
+            showToast(getString(R.string.notification_permissions));
+            Log.w(TAG, Arrays.toString(denied) + " are denied");
+        }));
+    }
+
+    private void initUi() {
+        this.editPath = (EditText) findViewById(R.id.edit_path);
+        this.editUrl = (EditText) findViewById(R.id.edit_url);
+        this.buttonStart = (Button) findViewById(R.id.button_start);
+
+        loadPreferences();
+
+        this.buttonStart.setOnClickListener((View v) -> {
+            this.buttonStart.setEnabled(false);
+            savePreferences();
+            start();
+        });
     }
 
     /**
-     * 権限を確認する
+     * 設定を読み込む
      */
-    private void checkPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            ActivityCompat.requestPermissions(this, PERMISSIONS, PERMISSION_REQUEST_CODE);
-        } else {
-            start();
-        }
+    private void loadPreferences() {
+        final Setting setting = Setting.load(getApplicationContext());
+        this.editPath.setText(setting.getVideoPath());
+        this.editUrl.setText(setting.getUploadUrl());
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        if (requestCode != PERMISSION_REQUEST_CODE) {
-            return;
-        }
-
-        for (int i = 0; i < permissions.length; i++) {
-            if (grantResults[i] != PackageManager.PERMISSION_GRANTED) {
-                Toast.makeText(this, R.string.notification_permissions, Toast.LENGTH_LONG).show();
-                Log.w(TAG, permissions[i] + " are denied");
-                return;
-            }
-        }
-
-        start();
+    /**
+     * 設定を保存する
+     */
+    private void savePreferences() {
+        (new Setting(
+                this.editPath.getText().toString(),
+                this.editUrl.getText().toString()
+        )).save(getApplicationContext());
     }
+
 
     private void start() {
-        final EditText editPath = (EditText) findViewById(R.id.edit_path);
-        final EditText editUrl = (EditText) findViewById(R.id.edit_url);
-        final Button buttonStart = (Button) findViewById(R.id.button_start);
+        FFmpegHelper.asyncDownload(getString(R.string.ffmpeg_root_url), getDownloadDir(), false, 30_000, (File ffmpeg) -> runOnUiThread(() -> {
+            if (ffmpeg == null) {
+                showToast("対応するFFmpegを用意できませんでした");
+                this.buttonStart.setEnabled(true);
+                return;
+            }
+            try {
+                upload(ffmpeg);
+            } catch (IOException e) {
+                Log.e(TAG, "Upload error", e);
+                showToast("アップロードに失敗しました");
+                this.buttonStart.setEnabled(true);
+            }
+        }), (Exception e) -> runOnUiThread(() -> {
+            Log.e(TAG, "Downloading FFmpeg failed", e);
+            showToast("FFmpegのダウンロードに失敗しました");
+            this.buttonStart.setEnabled(true);
+        }));
+    }
 
-        final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
-        editPath.setText(preferences.getString(KEY_PATH, (new File(getExternalFilesDir(Environment.DIRECTORY_MOVIES), "video.h264")).getAbsolutePath()));
-        editUrl.setText(preferences.getString(KEY_URL, "rtmp://example.com/live/0"));
+    @NonNull
+    private File getDownloadDir() {
+        // 外部ストレージは実行権限を付けられないらしい
+//        final File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+//        if (dir != null) {
+//            return dir;
+//        }
+        return getApplicationContext().getFilesDir().getAbsoluteFile();
+    }
 
-        final ExecutorService executor = Executors.newCachedThreadPool();
+    private void upload(File ffmpeg) throws IOException {
+        final Setting setting = Setting.load(getApplicationContext());
 
-        buttonStart.setOnClickListener((View v) -> {
-            buttonStart.setEnabled(false);
+        final AtomicBoolean running = new AtomicBoolean(true);
 
-            final String path = editPath.getText().toString();
-            final String url = editUrl.getText().toString();
+        final VideoUploader uploader = new FFmpegRtmpUploader(ffmpeg, setting.getUploadUrl(), (Exception e) -> runOnUiThread(() -> {
+            running.set(false);
+            this.buttonStart.setEnabled(true);
+        }), QUEUE_CAPACITY, QUEUE_THRESHOLD);
+        final InputStream input = new BufferedInputStream(new FileInputStream(setting.getVideoPath()));
 
-            preferences.edit().putString(KEY_PATH, path).putString(KEY_URL, url).apply();
+        final HandlerThread thread = new HandlerThread(getClass().getName());
+        thread.start();
 
-            final AtomicBoolean running = new AtomicBoolean(true);
-            final VideoQueue queue = new VideoQueue(QUEUE_CAPACITY, QUEUE_THRESHOLD);
+        final Handler handler = new Handler(thread.getLooper());
 
-            final RtmpUploader uploader = new RtmpUploader(queue, url, () -> {
-                running.set(false);
-                runOnUiThread(() -> buttonStart.setEnabled(true));
-            });
-            final Future<?> future = executor.submit(uploader);
-            executor.submit(() -> {
-                try (final InputStream input = new BufferedInputStream(new FileInputStream(path))) {
-                    final byte[] buff = new byte[DATA_SIZE];
-                    while (running.get()) {
-                        final int size = input.read(buff);
-                        if (size <= 0) {
-                            break;
-                        }
-                        queue.offer(Arrays.copyOf(buff, size));
-                        Thread.sleep(READ_INTERVAL);
+        final byte[] buff = new byte[DATA_SIZE];
+        final Runnable step = new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    if (!running.get()) {
+                        input.close();
+                        uploader.close();
+                        MainActivity.this.buttonStart.post(() -> MainActivity.this.buttonStart.setEnabled(true));
+                        return;
                     }
+
+                    final int size = input.read(buff);
+                    if (size <= 0) {
+                        input.close();
+                        uploader.close();
+                        MainActivity.this.buttonStart.post(() -> MainActivity.this.buttonStart.setEnabled(true));
+                        return;
+                    }
+                    uploader.sendVideo(Arrays.copyOf(buff, size));
                 } catch (IOException e) {
-                    Log.e(TAG, "File error", e);
-                } catch (InterruptedException e) {
-                    // 終了
-                } finally {
-                    future.cancel(true);
+                    Log.e(TAG, "Reading " + setting.getVideoPath() + " failed", e);
+                    runOnUiThread(() -> {
+                        showToast("映像データの読み取りに失敗しました");
+                        MainActivity.this.buttonStart.setEnabled(true);
+                    });
+                    return;
                 }
-            });
-        });
+
+                handler.postDelayed(this, READ_INTERVAL);
+            }
+        };
+
+        handler.post(step);
     }
 }
