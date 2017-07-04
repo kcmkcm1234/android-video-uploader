@@ -51,6 +51,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
         private static final int MSG_DATA = 0;
 
         private final OutputStream output;
+        @NonNull
         private final Consumer<Exception> onError;
         private final long capacity;
         private final long threshold;
@@ -62,7 +63,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
             super(looper);
 
             this.output = output;
-            this.onError = onError;
+            this.onError = (onError != null ? onError : (Exception e) -> Log.e(TAG, "Error occurred", e));
             this.capacity = capacity;
             this.threshold = threshold;
 
@@ -105,11 +106,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
                     }
                 }
             } catch (IOException e) {
-                if (this.onError != null) {
-                    this.onError.accept(e);
-                } else {
-                    Log.e(TAG, "Error occurred", e);
-                }
+                this.onError.accept(e);
             }
         }
 
@@ -127,6 +124,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
 
         private final BufferedReader input;
         private final Consumer<String> onLineRead;
+        @NonNull
         private final Consumer<Exception> onError;
 
         Reader(@NonNull Looper looper, @NonNull BufferedReader input, @Nullable Consumer<String> onLineRead, @Nullable Consumer<Exception> onError) {
@@ -134,7 +132,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
 
             this.input = input;
             this.onLineRead = onLineRead;
-            this.onError = onError;
+            this.onError = (onError != null ? onError : (Exception e) -> Log.e(TAG, "Error occurred", e));
         }
 
         void start() {
@@ -150,11 +148,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
                         }
                     }
                 } catch (IOException e) {
-                    if (this.onError != null) {
-                        this.onError.accept(e);
-                    } else {
-                        Log.e(TAG, "Error occurred", e);
-                    }
+                    this.onError.accept(e);
                 }
             });
         }
@@ -166,6 +160,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
 
     }
 
+    @NonNull
     private final Consumer<Exception> onError;
 
     private volatile boolean finish;
@@ -175,7 +170,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
 
     public FFmpegRtmpUploader(File ffmpeg, String url, Consumer<Exception> onError, long capacity, long threshold) throws IOException {
 
-        this.onError = onError;
+        this.onError = (onError != null ? onError : (Exception e) -> Log.e(TAG, "FFmpeg error occurred", e));
 
         this.finish = false;
 
@@ -200,13 +195,8 @@ public final class FFmpegRtmpUploader implements VideoUploader {
         stderrThread.start();
 
         this.writer = new Writer(writerThread.getLooper(), new BufferedOutputStream(process.getOutputStream()), (Exception e) -> {
-            if (this.finish) {
-                return;
-            }
-            if (this.onError != null) {
+            if (!this.finish) {
                 this.onError.accept(e);
-            } else {
-                Log.e(TAG, "FFmpeg error occurred", e);
             }
         }, capacity, threshold);
         this.stdoutReader = new Reader(stdoutThread.getLooper(), new BufferedReader(new InputStreamReader(process.getInputStream())), (String line) -> Log.v(TAG, "FFmpeg stdout: " + line), (Exception e) -> {
