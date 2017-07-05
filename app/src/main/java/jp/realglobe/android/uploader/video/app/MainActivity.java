@@ -31,12 +31,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import jp.realglobe.android.logger.simple.Log;
 import jp.realglobe.android.uploader.video.FFmpegHelper;
 import jp.realglobe.android.uploader.video.FFmpegRtmpUploader;
-import jp.realglobe.android.uploader.video.VideoUploader;
 import jp.realglobe.android.util.BaseActivity;
 
 public class MainActivity extends BaseActivity {
@@ -54,6 +52,9 @@ public class MainActivity extends BaseActivity {
             Manifest.permission.WRITE_EXTERNAL_STORAGE,
     };
 
+    private Handler handler;
+    private FFmpegRtmpUploader uploader;
+
     private EditText editPath;
     private EditText editUrl;
     private Button buttonStart;
@@ -63,6 +64,10 @@ public class MainActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        final HandlerThread thread = new HandlerThread(getClass().getName());
+        thread.start();
+        this.handler = new Handler(thread.getLooper());
+
         initUi();
 
         checkPermission(PERMISSIONS, makePermissionRequestCallback(() -> {
@@ -70,6 +75,16 @@ public class MainActivity extends BaseActivity {
             showToast(getString(R.string.notification_permissions));
             Log.w(TAG, Arrays.toString(denied) + " are denied");
         }));
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (this.uploader != null) {
+            this.uploader.stop();
+        }
+        this.handler.removeCallbacks(null);
+        this.handler.getLooper().quitSafely();
+        super.onDestroy();
     }
 
     private void initUi() {
@@ -140,27 +155,21 @@ public class MainActivity extends BaseActivity {
     private void upload(File ffmpeg) throws IOException {
         final Setting setting = Setting.load(getApplicationContext());
 
-        final AtomicBoolean running = new AtomicBoolean(true);
-
-        final VideoUploader uploader = new FFmpegRtmpUploader(ffmpeg, setting.getUploadUrl(), (Exception e) -> runOnUiThread(() -> {
-            running.set(false);
+        this.uploader = new FFmpegRtmpUploader();
+        this.uploader.start(ffmpeg, setting.getUploadUrl(), (Exception e) -> runOnUiThread(() -> {
+            Log.e(TAG, "Error occurred", e);
+            this.uploader.stop();
             this.buttonStart.setEnabled(true);
         }), QUEUE_CAPACITY, QUEUE_THRESHOLD);
+
         final InputStream input = new BufferedInputStream(new FileInputStream(setting.getVideoPath()));
-
-        final HandlerThread thread = new HandlerThread(getClass().getName());
-        thread.start();
-
-        final Handler handler = new Handler(thread.getLooper());
-
         final byte[] buff = new byte[DATA_SIZE];
         final Runnable step = new Runnable() {
             @Override
             public void run() {
                 try {
-                    if (!running.get()) {
+                    if (!MainActivity.this.uploader.isRunning()) {
                         input.close();
-                        uploader.close();
                         MainActivity.this.buttonStart.post(() -> MainActivity.this.buttonStart.setEnabled(true));
                         return;
                     }
@@ -168,11 +177,11 @@ public class MainActivity extends BaseActivity {
                     final int size = input.read(buff);
                     if (size <= 0) {
                         input.close();
-                        uploader.close();
+                        MainActivity.this.uploader.stop();
                         MainActivity.this.buttonStart.post(() -> MainActivity.this.buttonStart.setEnabled(true));
                         return;
                     }
-                    uploader.sendVideo(Arrays.copyOf(buff, size));
+                    MainActivity.this.uploader.sendVideo(Arrays.copyOf(buff, size));
                 } catch (IOException e) {
                     Log.e(TAG, "Reading " + setting.getVideoPath() + " failed", e);
                     runOnUiThread(() -> {
@@ -182,10 +191,10 @@ public class MainActivity extends BaseActivity {
                     return;
                 }
 
-                handler.postDelayed(this, READ_INTERVAL);
+                MainActivity.this.handler.postDelayed(this, READ_INTERVAL);
             }
         };
 
-        handler.post(step);
+        this.handler.post(step);
     }
 }
