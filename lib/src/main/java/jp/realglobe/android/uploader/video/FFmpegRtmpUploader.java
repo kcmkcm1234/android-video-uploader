@@ -33,13 +33,14 @@ import java.io.OutputStream;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 
+import jp.realglobe.android.function.Consumer;
 import jp.realglobe.android.logger.simple.Log;
 
 /**
  * FFmpeg を使って生の H264 映像を RTMP でアップロードする。
  * Created by fukuchidaisuke on 17/06/29.
  */
-public final class FFmpegRtmpUploader implements VideoUploader {
+public final class FFmpegRtmpUploader {
 
     private static final String TAG = FFmpegRtmpUploader.class.getName();
 
@@ -59,6 +60,8 @@ public final class FFmpegRtmpUploader implements VideoUploader {
         private final AtomicLong size;
         private boolean dropping;
 
+        private volatile boolean closed;
+
         Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity, long threshold) {
             super(looper);
 
@@ -69,6 +72,8 @@ public final class FFmpegRtmpUploader implements VideoUploader {
 
             this.size = new AtomicLong(0L);
             this.dropping = false;
+
+            this.closed = false;
         }
 
         void sendVideo(@NonNull byte[] data) {
@@ -93,6 +98,7 @@ public final class FFmpegRtmpUploader implements VideoUploader {
 
         @Override
         public void close() throws IOException {
+            this.closed = true;
             this.output.close();
         }
 
@@ -106,13 +112,15 @@ public final class FFmpegRtmpUploader implements VideoUploader {
                     }
                 }
             } catch (IOException e) {
-                this.onError.accept(e);
+                if (!this.closed) {
+                    this.onError.accept(e);
+                }
             }
         }
 
         private void upload(@NonNull byte[] data) throws IOException {
             this.size.addAndGet(-data.length);
-            output.write(data);
+            this.output.write(data);
         }
 
     }
@@ -127,12 +135,16 @@ public final class FFmpegRtmpUploader implements VideoUploader {
         @NonNull
         private final Consumer<Exception> onError;
 
+        private volatile boolean closed;
+
         Reader(@NonNull Looper looper, @NonNull BufferedReader input, @Nullable Consumer<String> onLineRead, @Nullable Consumer<Exception> onError) {
             super(looper);
 
             this.input = input;
             this.onLineRead = onLineRead;
             this.onError = (onError != null ? onError : (Exception e) -> Log.e(TAG, "Error occurred", e));
+
+            this.closed = false;
         }
 
         void start() {
@@ -148,31 +160,49 @@ public final class FFmpegRtmpUploader implements VideoUploader {
                         }
                     }
                 } catch (IOException e) {
-                    this.onError.accept(e);
+                    if (!this.closed) {
+                        this.onError.accept(e);
+                    }
                 }
             });
         }
 
         @Override
         public void close() throws IOException {
+            this.closed = true;
             this.input.close();
         }
 
     }
 
-    @NonNull
-    private final Consumer<Exception> onError;
+    public FFmpegRtmpUploader() {
+    }
 
-    private volatile boolean finish;
-    private final Writer writer;
-    private final Reader stdoutReader;
-    private final Reader stderrReader;
+    private Process process;
+    private Writer writer;
+    private Reader stdoutReader;
+    private Reader stderrReader;
 
-    public FFmpegRtmpUploader(File ffmpeg, String url, Consumer<Exception> onError, long capacity, long threshold) throws IOException {
+    public synchronized boolean isRunning() {
+        return this.writer != null;
+    }
 
-        this.onError = (onError != null ? onError : (Exception e) -> Log.e(TAG, "FFmpeg error occurred", e));
-
-        this.finish = false;
+    /**
+     * 動かす。
+     * 既に動いてたら何もしない
+     *
+     * @param ffmpeg    FFmpeg の実行可能バイナリ
+     * @param url       アップロード先 URL
+     * @param onError   エラー時に実行される関数
+     * @param capacity  バッファサイズ
+     * @param threshold データの受け入れを再開するときの使用バッファサイズ
+     * @return 動かしたら true
+     * @throws IOException FFmpeg の実行エラー
+     */
+    public synchronized boolean start(@NonNull File ffmpeg, @NonNull String url, @Nullable Consumer<Exception> onError, long capacity, long threshold) throws IOException {
+        if (this.writer != null) {
+            return false;
+        }
 
         final String[] command = new String[]{
                 ffmpeg.getAbsolutePath(),
@@ -185,56 +215,72 @@ public final class FFmpegRtmpUploader implements VideoUploader {
                 url,
         };
         Log.v(TAG, "Execute " + Arrays.toString(command));
-        final Process process = new ProcessBuilder(command).start();
+        process = new ProcessBuilder(command).start();
 
+        // パイプ書き込みはブロックすることも多いので自前のスレッドを使う
         final HandlerThread writerThread = new HandlerThread(getClass().getName() + ":writer");
+        // パイプ読み込みはブロックするので自前のスレッドを使う
         final HandlerThread stdoutThread = new HandlerThread(getClass().getName() + ":stdout");
         final HandlerThread stderrThread = new HandlerThread(getClass().getName() + ":stderr");
+
         writerThread.start();
         stdoutThread.start();
         stderrThread.start();
 
-        this.writer = new Writer(writerThread.getLooper(), new BufferedOutputStream(process.getOutputStream()), (Exception e) -> {
-            if (!this.finish) {
-                this.onError.accept(e);
-            }
-        }, capacity, threshold);
-        this.stdoutReader = new Reader(stdoutThread.getLooper(), new BufferedReader(new InputStreamReader(process.getInputStream())), (String line) -> Log.v(TAG, "FFmpeg stdout: " + line), (Exception e) -> {
-            if (!this.finish) {
-                Log.w(TAG, "Reading ffmpeg stdout failed", e);
-            }
-        });
-        this.stderrReader = new Reader(stderrThread.getLooper(), new BufferedReader(new InputStreamReader(process.getErrorStream())), (String line) -> Log.w(TAG, "FFmpeg stderr: " + line), (Exception e) -> {
-            if (!this.finish) {
-                Log.w(TAG, "Reading ffmpeg stderr failed", e);
-            }
-        });
+        this.writer = new Writer(writerThread.getLooper(), new BufferedOutputStream(this.process.getOutputStream()), (onError != null ? onError : (Exception e) -> Log.e(TAG, "FFmpeg error occurred", e)), capacity, threshold);
+        this.stdoutReader = new Reader(stdoutThread.getLooper(), new BufferedReader(new InputStreamReader(process.getInputStream())), (String line) -> Log.v(TAG, "FFmpeg stdout: " + line), (Exception e) -> Log.w(TAG, "Reading ffmpeg stdout failed", e));
+        this.stderrReader = new Reader(stderrThread.getLooper(), new BufferedReader(new InputStreamReader(process.getErrorStream())), (String line) -> Log.w(TAG, "FFmpeg stderr: " + line), (Exception e) -> Log.w(TAG, "Reading ffmpeg stderr failed", e));
         this.stdoutReader.start();
         this.stderrReader.start();
+
+        return true;
     }
 
-    @Override
-    public void sendVideo(@NonNull byte[] data) {
-        this.writer.sendVideo(data);
+    /**
+     * 止める。
+     * 既に止まってたら何もしない
+     *
+     * @return 止めたら true
+     */
+    public synchronized boolean stop() {
+        if (this.writer == null) {
+            return false;
+        }
+
+        this.writer.getLooper().quit();
+        this.stdoutReader.getLooper().quit();
+        this.stderrReader.getLooper().quit();
+
+        closeWithoutException(this.writer);
+        closeWithoutException(this.stdoutReader);
+        closeWithoutException(this.stderrReader);
+
+        this.process.destroy();
+
+        this.writer = null;
+        this.stdoutReader = null;
+        this.stderrReader = null;
+        return true;
     }
 
-    @Override
-    public void close() {
-        this.finish = true;
-        this.writer.getLooper().quitSafely();
-        this.stdoutReader.getLooper().quitSafely();
-        this.stderrReader.getLooper().quitSafely();
-        close(this.writer);
-        close(this.stdoutReader);
-        close(this.stderrReader);
-    }
-
-    private void close(@NonNull Closeable closeable) {
+    private void closeWithoutException(@NonNull Closeable closeable) {
         try {
             closeable.close();
         } catch (IOException e) {
             Log.e(TAG, "Closing error", e);
         }
+    }
+
+    /**
+     * 映像をアップロードする
+     *
+     * @param data 生の H264 映像データ
+     */
+    public synchronized void sendVideo(@NonNull byte[] data) {
+        if (this.writer == null) {
+            return;
+        }
+        this.writer.sendVideo(data);
     }
 
 }

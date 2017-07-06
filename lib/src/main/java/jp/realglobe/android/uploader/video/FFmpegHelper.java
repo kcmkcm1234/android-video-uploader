@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+import jp.realglobe.android.function.Consumer;
 import jp.realglobe.android.logger.simple.Log;
 
 /**
@@ -48,6 +49,9 @@ public final class FFmpegHelper {
     private static final String TAG = FFmpegHelper.class.getName();
 
     private static final int BUFFER_SIZE = 1 << 13; // 8K
+
+    private FFmpegHelper() {
+    }
 
     /**
      * FFmpeg をダウンロードする。
@@ -83,7 +87,7 @@ public final class FFmpegHelper {
         return savePath;
     }
 
-    private static String addUrlPath(String base, String subPath) throws MalformedURLException, URISyntaxException {
+    private static String addUrlPath(@NonNull String base, @NonNull String subPath) throws MalformedURLException, URISyntaxException {
         // 普通にやると % 周りが勝手にデコードされてしまうので頑張る
         final URI uri = new URI(base);
 
@@ -106,7 +110,7 @@ public final class FFmpegHelper {
      * @return 成功したら true
      * @throws IOException ネットワークエラー
      */
-    private static boolean download(URL url, File savePath, int timeout) throws IOException {
+    private static boolean download(@NonNull URL url, @NonNull File savePath, int timeout) throws IOException {
         if (savePath.getParentFile().mkdirs()) {
             Log.i(TAG, "Made directory " + savePath.getParent());
         }
@@ -151,7 +155,7 @@ public final class FFmpegHelper {
         return architectures;
     }
 
-    private static void copy(InputStream input, OutputStream output) throws IOException {
+    private static void copy(@NonNull InputStream input, @NonNull OutputStream output) throws IOException {
         final byte[] buffer = new byte[BUFFER_SIZE];
         while (true) {
             final int size = input.read(buffer);
