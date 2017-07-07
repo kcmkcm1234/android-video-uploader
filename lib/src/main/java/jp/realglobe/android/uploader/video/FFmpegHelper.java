@@ -111,7 +111,8 @@ public final class FFmpegHelper {
      * @throws IOException ネットワークエラー
      */
     private static boolean download(@NonNull URL url, @NonNull File savePath, int timeout) throws IOException {
-        if (savePath.getParentFile().mkdirs()) {
+        final File parent = savePath.getParentFile();
+        if (parent != null && parent.mkdirs()) {
             Log.i(TAG, "Made directory " + savePath.getParent());
         }
 
