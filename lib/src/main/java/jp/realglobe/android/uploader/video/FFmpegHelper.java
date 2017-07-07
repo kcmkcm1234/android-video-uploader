@@ -166,27 +166,41 @@ public final class FFmpegHelper {
         }
     }
 
+    /**
+     * 非同期に FFmpeg をダウンロードする。
+     *
+     * @param urlRoot   ダウンロード元の URL。この下に {CPUアーキテクチャ}/ffmpeg でバイナリが置いてある
+     * @param saveDir   保存先。直下に ffmpeg としてバイナリを配置する
+     * @param overwrite 上書きするか。false かつ既に保存先に ffmpeg ファイルが存在する場合、何もしない
+     * @param timeout   接続タイムアウト（ミリ秒）
+     * @param onSuccess 成功時に UI スレッドで実行される。引数は FFmpeg のパス。対応する FFmpeg をダウンロードできなかった場合は null
+     * @param onError   失敗時に UI スレッドで実行される
+     */
     public static void asyncDownload(@NonNull String urlRoot, @NonNull File saveDir, boolean overwrite, int timeout, @Nullable Consumer<File> onSuccess, @Nullable Consumer<Exception> onError) {
-        (new AsyncTask<Void, Void, Void>() {
+        (new AsyncTask<Void, Void, Object>() {
             @Override
-            protected Void doInBackground(Void... params) {
-                final File path;
+            protected Object doInBackground(Void... params) {
                 try {
-                    path = download(urlRoot, saveDir, overwrite, timeout);
+                    return download(urlRoot, saveDir, overwrite, timeout);
                 } catch (Exception e) {
+                    return e;
+                }
+            }
+
+            @Override
+            protected void onPostExecute(Object result) {
+                if (result == null || result instanceof File) {
+                    if (onSuccess != null) {
+                        onSuccess.accept((File) result);
+                    }
+                } else if (result instanceof Exception) {
+                    final Exception e = (Exception) result;
                     if (onError != null) {
                         onError.accept(e);
                     } else {
                         Log.e(TAG, "Error occurred", e);
                     }
-                    return null;
                 }
-
-                if (onSuccess != null) {
-                    onSuccess.accept(path);
-                }
-
-                return null;
             }
         }).execute();
     }
