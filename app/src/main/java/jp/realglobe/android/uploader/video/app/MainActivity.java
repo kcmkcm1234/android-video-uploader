@@ -122,7 +122,7 @@ public class MainActivity extends BaseActivity {
 
 
     private void start() {
-        FFmpegHelper.asyncDownload(getString(R.string.ffmpeg_root_url), getDownloadDir(), false, 30_000, (File ffmpeg) -> runOnUiThread(() -> {
+        FFmpegHelper.asyncDownload(getString(R.string.ffmpeg_root_url), getDownloadDir(), false, 30_000, (File ffmpeg) -> {
             if (ffmpeg == null) {
                 showToast(getString(R.string.notification_no_ffmpeg));
                 this.buttonStart.setEnabled(true);
@@ -135,11 +135,11 @@ public class MainActivity extends BaseActivity {
                 showToast(getString(R.string.notification_upload_error));
                 this.buttonStart.setEnabled(true);
             }
-        }), (Exception e) -> runOnUiThread(() -> {
+        }, (Exception e) -> {
             Log.e(TAG, "Downloading FFmpeg failed", e);
             showToast(getString(R.string.notification_ffmpeg_download_error));
             this.buttonStart.setEnabled(true);
-        }));
+        });
     }
 
     @NonNull
