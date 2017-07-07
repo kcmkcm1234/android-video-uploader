@@ -193,13 +193,20 @@ public final class FFmpegHelper {
                     if (onSuccess != null) {
                         onSuccess.accept((File) result);
                     }
-                } else if (result instanceof Exception) {
-                    final Exception e = (Exception) result;
-                    if (onError != null) {
-                        onError.accept(e);
-                    } else {
-                        Log.e(TAG, "Error occurred", e);
-                    }
+                }
+
+                final Exception e;
+                if (result instanceof Exception) {
+                    e = (Exception) result;
+                } else {
+                    // ここには来ないはず
+                    e = new IllegalStateException("unexpected behavior");
+                }
+
+                if (onError != null) {
+                    onError.accept(e);
+                } else {
+                    Log.e(TAG, "Error occurred", e);
                 }
             }
         }).execute();
