@@ -201,7 +201,7 @@ public final class FFmpegHelper {
                     e = (Exception) result;
                 } else {
                     // ここには来ないはず
-                    e = new IllegalStateException("unexpected behavior");
+                    e = new IllegalStateException("unexpected result " + result);
                 }
 
                 if (onError != null) {
