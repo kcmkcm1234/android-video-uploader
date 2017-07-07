@@ -193,6 +193,7 @@ public final class FFmpegHelper {
                     if (onSuccess != null) {
                         onSuccess.accept((File) result);
                     }
+                    return;
                 }
 
                 final Exception e;
