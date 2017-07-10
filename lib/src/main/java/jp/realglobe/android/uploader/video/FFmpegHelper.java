@@ -111,7 +111,8 @@ public final class FFmpegHelper {
      * @throws IOException ネットワークエラー
      */
     private static boolean download(@NonNull URL url, @NonNull File savePath, int timeout) throws IOException {
-        if (savePath.getParentFile().mkdirs()) {
+        final File parent = savePath.getParentFile();
+        if (parent != null && parent.mkdirs()) {
             Log.i(TAG, "Made directory " + savePath.getParent());
         }
 
@@ -193,6 +194,7 @@ public final class FFmpegHelper {
                     if (onSuccess != null) {
                         onSuccess.accept((File) result);
                     }
+                    return;
                 }
 
                 final Exception e;
@@ -200,7 +202,7 @@ public final class FFmpegHelper {
                     e = (Exception) result;
                 } else {
                     // ここには来ないはず
-                    e = new IllegalStateException("unexpected behavior");
+                    e = new IllegalStateException("unexpected result " + result);
                 }
 
                 if (onError != null) {
