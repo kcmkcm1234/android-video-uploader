@@ -55,23 +55,19 @@ public final class FFmpegRtmpUploader {
         @NonNull
         private final Consumer<Exception> onError;
         private final long capacity;
-        private final long threshold;
 
         private final AtomicLong size;
-        private boolean dropping;
 
         private volatile boolean closed;
 
-        Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity, long threshold) {
+        Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity) {
             super(looper);
 
             this.output = output;
             this.onError = (onError != null ? onError : (Exception e) -> Log.e(TAG, "Error occurred", e));
             this.capacity = capacity;
-            this.threshold = threshold;
 
             this.size = new AtomicLong(0L);
-            this.dropping = false;
 
             this.closed = false;
         }
@@ -79,21 +75,13 @@ public final class FFmpegRtmpUploader {
         void sendVideo(@NonNull byte[] data) {
             final long currentSize = this.size.getAndAdd(data.length);
 
-            if (currentSize >= this.capacity && !this.dropping) {
-                Log.w(TAG, "Start dropping");
-                this.dropping = true;
+            if (currentSize >= this.capacity) {
+                removeMessages(MSG_DATA);
+                Log.w(TAG, (currentSize - data.length) + " bytes were dropped");
+                this.size.set(data.length);
             }
 
-            if (this.dropping) {
-                if (currentSize >= this.threshold) {
-                    // 捨てる
-                    this.size.addAndGet(-data.length);
-                    return;
-                }
-                Log.w(TAG, "Stop dropping");
-                this.dropping = false;
-            }
-            sendMessage(obtainMessage(Writer.MSG_DATA, data));
+            sendMessage(obtainMessage(MSG_DATA, data));
         }
 
         @Override
@@ -191,15 +179,14 @@ public final class FFmpegRtmpUploader {
      * 動かす。
      * 既に動いてたら何もしない
      *
-     * @param ffmpeg    FFmpeg の実行可能バイナリ
-     * @param url       アップロード先 URL
-     * @param onError   エラー時に実行される関数
-     * @param capacity  バッファサイズ
-     * @param threshold データの受け入れを再開するときの使用バッファサイズ
+     * @param ffmpeg   FFmpeg の実行可能バイナリ
+     * @param url      アップロード先 URL
+     * @param onError  エラー時に実行される関数
+     * @param capacity バッファサイズ
      * @return 動かしたら true
      * @throws IOException FFmpeg の実行エラー
      */
-    public synchronized boolean start(@NonNull File ffmpeg, @NonNull String url, @Nullable Consumer<Exception> onError, long capacity, long threshold) throws IOException {
+    public synchronized boolean start(@NonNull File ffmpeg, @NonNull String url, @Nullable Consumer<Exception> onError, long capacity) throws IOException {
         if (this.writer != null) {
             return false;
         }
@@ -227,7 +214,7 @@ public final class FFmpegRtmpUploader {
         stdoutThread.start();
         stderrThread.start();
 
-        this.writer = new Writer(writerThread.getLooper(), new BufferedOutputStream(this.process.getOutputStream()), (onError != null ? onError : (Exception e) -> Log.e(TAG, "FFmpeg error occurred", e)), capacity, threshold);
+        this.writer = new Writer(writerThread.getLooper(), new BufferedOutputStream(this.process.getOutputStream()), (onError != null ? onError : (Exception e) -> Log.e(TAG, "FFmpeg error occurred", e)), capacity);
         this.stdoutReader = new Reader(stdoutThread.getLooper(), new BufferedReader(new InputStreamReader(process.getInputStream())), (String line) -> Log.v(TAG, "FFmpeg stdout: " + line), (Exception e) -> Log.w(TAG, "Reading ffmpeg stdout failed", e));
         this.stderrReader = new Reader(stderrThread.getLooper(), new BufferedReader(new InputStreamReader(process.getErrorStream())), (String line) -> Log.w(TAG, "FFmpeg stderr: " + line), (Exception e) -> Log.w(TAG, "Reading ffmpeg stderr failed", e));
         this.stdoutReader.start();
