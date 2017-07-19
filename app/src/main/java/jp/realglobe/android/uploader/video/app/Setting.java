@@ -48,7 +48,7 @@ final class Setting {
         final SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(context);
         return new Setting(
                 PreferenceUtils.getNonEmptyString(preferences, KEY_VIDEO_PATH, (new File(context.getExternalFilesDir(Environment.DIRECTORY_MOVIES), context.getString(R.string.dummy_video_file))).getAbsolutePath()),
-                PreferenceUtils.getNonEmptyString(preferences, KEY_UPLOAD_URL, context.getString(R.string.dummy_upload_url))
+                PreferenceUtils.getNonEmptyString(preferences, KEY_UPLOAD_URL, context.getString(R.string.upload_url))
         );
     }
 

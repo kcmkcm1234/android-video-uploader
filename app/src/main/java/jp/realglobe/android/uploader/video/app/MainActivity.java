@@ -41,10 +41,9 @@ public class MainActivity extends BaseActivity {
 
     private static final String TAG = MainActivity.class.getName();
 
-    private static final long QUEUE_CAPACITY = 1 << 23; // 8MB
-    private static final long QUEUE_THRESHOLD = 1 << 20; // 1MB
+    private static final long QUEUE_CAPACITY = 1 << 22; // 4MB
     private static final int DATA_SIZE = (1_000 << 10) / 8; // 1000Kb
-    private static final long READ_INTERVAL = 100; // ミリ秒
+    private static final long READ_INTERVAL = 10; // ミリ秒
 
     private static final String[] PERMISSIONS = new String[]{
             Manifest.permission.INTERNET,
@@ -156,38 +155,39 @@ public class MainActivity extends BaseActivity {
             Log.e(TAG, "Error occurred", e);
             this.uploader.stop();
             this.buttonStart.setEnabled(true);
-        }), QUEUE_CAPACITY, QUEUE_THRESHOLD);
+        }), QUEUE_CAPACITY);
 
         final InputStream input = new BufferedInputStream(new FileInputStream(setting.getVideoPath()));
         final byte[] buff = new byte[DATA_SIZE];
         final Runnable step = new Runnable() {
             @Override
             public void run() {
+                final MainActivity activity = MainActivity.this;
                 try {
-                    if (!MainActivity.this.uploader.isRunning()) {
+                    if (!activity.uploader.isRunning()) {
                         input.close();
-                        MainActivity.this.buttonStart.post(() -> MainActivity.this.buttonStart.setEnabled(true));
+                        activity.buttonStart.post(() -> activity.buttonStart.setEnabled(true));
                         return;
                     }
 
                     final int size = input.read(buff);
                     if (size <= 0) {
                         input.close();
-                        MainActivity.this.uploader.stop();
-                        MainActivity.this.buttonStart.post(() -> MainActivity.this.buttonStart.setEnabled(true));
+                        activity.uploader.stop();
+                        activity.buttonStart.post(() -> activity.buttonStart.setEnabled(true));
                         return;
                     }
-                    MainActivity.this.uploader.sendVideo(Arrays.copyOf(buff, size));
+                    activity.uploader.sendVideo(Arrays.copyOf(buff, size));
                 } catch (IOException e) {
                     Log.e(TAG, "Reading " + setting.getVideoPath() + " failed", e);
                     runOnUiThread(() -> {
                         showToast(getString(R.string.notification_video_error));
-                        MainActivity.this.buttonStart.setEnabled(true);
+                        activity.buttonStart.setEnabled(true);
                     });
                     return;
                 }
 
-                MainActivity.this.handler.postDelayed(this, READ_INTERVAL);
+                activity.handler.postDelayed(this, READ_INTERVAL);
             }
         };
 

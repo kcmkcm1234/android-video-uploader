@@ -18,4 +18,5 @@
 
 <resources>
     <string name="ffmpeg_root_url">Your FFmpeg Server URL</string>
+    <string name="upload_url">Your RTMP Server URL</string>
 </resources>
