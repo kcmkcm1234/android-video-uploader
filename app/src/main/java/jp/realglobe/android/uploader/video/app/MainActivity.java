@@ -145,10 +145,6 @@ public class MainActivity extends BaseActivity {
     @NonNull
     private File getDownloadDir() {
         // 外部ストレージは実行権限を付けられないらしい
-//        final File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-//        if (dir != null) {
-//            return dir;
-//        }
         return getApplicationContext().getFilesDir().getAbsoluteFile();
     }
 
