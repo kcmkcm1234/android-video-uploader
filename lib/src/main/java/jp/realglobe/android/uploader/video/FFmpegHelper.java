@@ -80,7 +80,7 @@ public final class FFmpegHelper {
         if (!savePath.exists()) {
             // 失敗
             return null;
-        } else if (!savePath.canExecute() && savePath.setExecutable(true)) {
+        } else if (!savePath.canExecute() && !savePath.setExecutable(true)) {
             Log.e(TAG, "Cannot set executable permission to " + savePath);
             return null;
         }
