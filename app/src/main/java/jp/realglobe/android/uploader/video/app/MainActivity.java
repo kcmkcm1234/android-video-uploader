@@ -177,7 +177,10 @@ public class MainActivity extends BaseActivity {
                         activity.buttonStart.post(() -> activity.buttonStart.setEnabled(true));
                         return;
                     }
-                    activity.uploader.sendVideo(Arrays.copyOf(buff, size));
+                    if (activity.uploader.sendVideo(Arrays.copyOf(buff, size))) {
+                        Log.w(TAG, "Video buffer was cleared");
+                        runOnUiThread(() -> showToast(getString(R.string.notification_buffer_clear)));
+                    }
                 } catch (IOException e) {
                     Log.e(TAG, "Reading " + setting.getVideoPath() + " failed", e);
                     runOnUiThread(() -> {
@@ -193,4 +196,5 @@ public class MainActivity extends BaseActivity {
 
         this.handler.post(step);
     }
+
 }
