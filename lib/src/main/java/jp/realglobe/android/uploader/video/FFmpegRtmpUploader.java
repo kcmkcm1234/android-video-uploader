@@ -60,7 +60,7 @@ public final class FFmpegRtmpUploader {
 
         private volatile boolean closed;
 
-        Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity) {
+        private Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity) {
             super(looper);
 
             this.output = output;
@@ -72,7 +72,7 @@ public final class FFmpegRtmpUploader {
             this.closed = false;
         }
 
-        void sendVideo(@NonNull byte[] data) {
+        private void sendVideo(@NonNull byte[] data) {
             final long currentSize = this.size.getAndAdd(data.length);
 
             if (currentSize >= this.capacity) {
@@ -125,7 +125,7 @@ public final class FFmpegRtmpUploader {
 
         private volatile boolean closed;
 
-        Reader(@NonNull Looper looper, @NonNull BufferedReader input, @Nullable Consumer<String> onLineRead, @Nullable Consumer<Exception> onError) {
+        private Reader(@NonNull Looper looper, @NonNull BufferedReader input, @Nullable Consumer<String> onLineRead, @Nullable Consumer<Exception> onError) {
             super(looper);
 
             this.input = input;
@@ -135,7 +135,7 @@ public final class FFmpegRtmpUploader {
             this.closed = false;
         }
 
-        void start() {
+        private void start() {
             post(() -> {
                 try {
                     while (true) {
