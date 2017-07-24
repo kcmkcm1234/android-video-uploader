@@ -60,7 +60,7 @@ public final class FFmpegRtmpUploader {
 
         private volatile boolean closed;
 
-        Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity) {
+        private Writer(@NonNull Looper looper, @NonNull OutputStream output, @Nullable Consumer<Exception> onError, long capacity) {
             super(looper);
 
             this.output = output;
@@ -72,16 +72,18 @@ public final class FFmpegRtmpUploader {
             this.closed = false;
         }
 
-        void sendVideo(@NonNull byte[] data) {
+        private boolean sendVideo(@NonNull byte[] data) {
             final long currentSize = this.size.getAndAdd(data.length);
 
-            if (currentSize >= this.capacity) {
+            boolean clear = (currentSize >= this.capacity);
+            if (clear) {
                 removeMessages(MSG_DATA);
                 Log.w(TAG, (currentSize - data.length) + " bytes were dropped");
                 this.size.set(data.length);
             }
 
             sendMessage(obtainMessage(MSG_DATA, data));
+            return clear;
         }
 
         @Override
@@ -125,7 +127,7 @@ public final class FFmpegRtmpUploader {
 
         private volatile boolean closed;
 
-        Reader(@NonNull Looper looper, @NonNull BufferedReader input, @Nullable Consumer<String> onLineRead, @Nullable Consumer<Exception> onError) {
+        private Reader(@NonNull Looper looper, @NonNull BufferedReader input, @Nullable Consumer<String> onLineRead, @Nullable Consumer<Exception> onError) {
             super(looper);
 
             this.input = input;
@@ -135,7 +137,7 @@ public final class FFmpegRtmpUploader {
             this.closed = false;
         }
 
-        void start() {
+        private void start() {
             post(() -> {
                 try {
                     while (true) {
@@ -262,12 +264,13 @@ public final class FFmpegRtmpUploader {
      * 映像をアップロードする
      *
      * @param data 生の H264 映像データ
+     * @return バッファをクリアしたら true
      */
-    public synchronized void sendVideo(@NonNull byte[] data) {
+    public synchronized boolean sendVideo(@NonNull byte[] data) {
         if (this.writer == null) {
-            return;
+            return false;
         }
-        this.writer.sendVideo(data);
+        return this.writer.sendVideo(data);
     }
 
 }
