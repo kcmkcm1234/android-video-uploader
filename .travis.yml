@@ -24,6 +24,7 @@ script:
 env:
   - MODULE_DIR=lib
 before_deploy:
+  - sudo apt-get install -y libxml2-utils
   - ./gradlew install
   - curl -s https://raw.githubusercontent.com/realglobe-Inc/travis-deploy-scripts/master/gradle-prepare-files.sh | sh
   - curl -s https://raw.githubusercontent.com/realglobe-Inc/travis-deploy-scripts/master/maven-generate-bintray-descriptor.sh | sh
