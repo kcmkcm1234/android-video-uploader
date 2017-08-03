@@ -3,7 +3,7 @@ apply plugin: 'me.tatarka.retrolambda'
 
 def artifactGroupId = 'jp.realglobe'
 def artifactArtifactId = 'android-video-uploader'
-def artifactVersion = '4.0.0'
+def artifactVersion = '4.1.0'
 def artifactName = 'Android Video Uploader'
 def artifactDescription = 'Library to upload live video stream'
 def artifactUrl = "https://github.com/realglobe-Inc/${artifactArtifactId}"
